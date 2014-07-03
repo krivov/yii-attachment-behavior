@@ -50,7 +50,12 @@ class AttachmentBehavior extends CActiveRecordBehavior {
     /**
      * @property string path to save the attachment
      */ 
-    public $path = ':folder/:id.:ext';
+    public $path = ':folder/';
+
+    /**
+     * @property string filename to save the attachment
+     */
+    public $newfilename = ':id.:ext';
     
     /**
     * @property name of attribute which holds the attachment
@@ -90,14 +95,14 @@ class AttachmentBehavior extends CActiveRecordBehavior {
     {
         if($style == ''){
             if($this->hasAttachment())
-                return $this->Owner->{$this->attribute};
+                return $this->getFullPath($this->Owner->{$this->attribute}, false);
             elseif($this->fallback_image != '')
                 return $this->fallback_image;
             else
                 return '';
         }else{
             if(isset($this->styles[$style])){
-                $im = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->Owner->{$this->attribute});                
+                $im = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->getFullPath($this->Owner->{$this->attribute}));
                 if(file_exists($im))
                     return  $im;
                 elseif(isset($this->fallback_image))
@@ -112,7 +117,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
      */
     public function hasAttachment()
     {
-        return file_exists($this->Owner->{$this->attribute});
+        return file_exists($this->getFullPath($this->Owner->{$this->attribute}));
     }
     
     /**
@@ -123,10 +128,10 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         $array = array();
         if($this->hasAttachment())
         {
-            $array[] = $this->Owner->{$this->attribute};
+            $array[] = $this->getFullPath($this->Owner->{$this->attribute});
             foreach($this->styles as $k => $v)
             {
-                $im = preg_replace('/\.(.*)$/','-'.$k.'\\0',$this->Owner->{$this->attribute});
+                $im = preg_replace('/\.(.*)$/','-'.$k.'\\0',$this->getFullPath($this->Owner->{$this->attribute}));
                 if(file_exists($im))
                     $array[] = $im;
             }
@@ -141,8 +146,8 @@ class AttachmentBehavior extends CActiveRecordBehavior {
      */
     public function deleteAttachment()
     {
-        if(file_exists($this->Owner->{$this->attribute}))unlink($this->Owner->{$this->attribute});
-        preg_match('/\.(.*)$/',$this->Owner->{$this->attribute},$matches);
+        if(file_exists($this->getFullPath($this->Owner->{$this->attribute})))unlink($this->getFullPath($this->Owner->{$this->attribute}));
+        preg_match('/\.(.*)$/',$this->getFullPath($this->Owner->{$this->attribute}),$matches);
         $this->file_extension = end($matches);
         if(!empty($this->styles)){
             $this->path = str_replace('.:ext','-:custom.:ext',$this->path);    
@@ -162,25 +167,31 @@ class AttachmentBehavior extends CActiveRecordBehavior {
     public function afterSave($event)
     {
         $file = AttachmentUploadedFile::getInstance($this->Owner,$this->attribute);
+
         if(!is_null($file)){
             if(!$this->Owner->isNewRecord){
                 //delete previous attachment
-                if(file_exists($this->Owner->{$this->attribute}))unlink($this->Owner->{$this->attribute});
+                if(file_exists($this->getFullPath($this->Owner->{$this->attribute}))) {
+                    unlink($this->getFullPath($this->Owner->{$this->attribute}));
+                }
             }else{
                 $this->Owner->isNewRecord = false;
             }
             preg_match('/\.(.*)$/',$file->name,$matches);
             $this->file_extension = end($matches);
             $this->filename = $file->name;
-            $path = $this->parsedPath;
-        
+            $this->newfilename = $this->getParsedPath($this->newfilename);
+
+            $path = $this->getFullPath($this->newfilename);
+
+
+
             preg_match('|^(.*[\\\/])|', $path, $match);
-            $folder = end($match);      
+            $folder = end($match);
             if(!is_dir($folder))mkdir($folder, 0777, true);
-        
             $file->saveAs($path,false);
-            $file_type = filetype($path);       
-            $this->Owner->saveAttributes(array($this->attribute => $path));
+            $file_type = filetype($path);
+            $this->Owner->saveAttributes(array($this->attribute => $this->newfilename));
             $attributes = $this->Owner->attributes;
             
             if(array_key_exists('file_size', $attributes)){
@@ -215,7 +226,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
                 }
                 // if the dimensions start with an ! the keepratio will be false
                 foreach($this->styles as $style => $size){
-                    $processor->output_path = $this->getParsedPath($style);
+                    $processor->output_path = $this->getParsedPath($path);
                     $s = explode('x',$size);
                     if($s[0][0] == '!'){
                         $s[0] = ltrim($s[0], '!');
@@ -230,11 +241,11 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         return true;
     }
 
-    public function getParsedPath($custom = '')
+    public function getParsedPath($path)
     {
-        $needle = array(':folder', ':model', ':id', ':ext', ':filename', ':custom');
-        $replacement = array($this->folder, get_class($this->Owner), $this->Owner->primaryKey,$this->file_extension, $this->filename, $custom);
-        if(preg_match_all('/:\\{([^\\}]+)\\}/', $this->path, $matches, PREG_SET_ORDER)) {
+        $needle = array(':folder', ':model', ':id', ':ext', ':filename');
+        $replacement = array($this->folder, get_class($this->Owner), $this->Owner->primaryKey,$this->file_extension, $this->filename);
+        if(preg_match_all('/:\\{([^\\}]+)\\}/', $path, $matches, PREG_SET_ORDER)) {
             foreach($matches as $match) {
                 $valuePath = explode('.', $match[1]);
                 $value = $this->owner;
@@ -246,7 +257,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
                 $replacement[] = $value;
             }
         }
-        return str_replace($needle, $replacement, $this->path);
+        return str_replace($needle, $replacement, $path);
     }
 
 
@@ -256,6 +267,16 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         if($name != $this->attribute)
             parent::onUnsafeAttribute($name, $value);
     }
+
+    public function getFullPath($file, $webroot = true) {
+        if ($webroot) {
+            return Yii::getPathOfAlias("webroot") . $this->path . $file;
+        } else {
+            return $this->path . $file;
+        }
+
+    }
+
 }
 
 class AttachmentUploadedFile
