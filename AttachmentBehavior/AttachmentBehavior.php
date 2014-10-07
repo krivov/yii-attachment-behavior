@@ -2,7 +2,7 @@
 /**
  * AttachmentBehavior class file.
  *
- * @author Greg Molnar 
+ * @author Greg Molnar
  * @link https://github.com/gregmolnar/yii-attachment-behavior/
  * @copyright Copyright &copy; Greg Molnar
  * @license http://opensource.org/licenses/bsd-license.php
@@ -13,7 +13,7 @@
  * you will need to add the following database fields to your model:
  * filename string
  * In your model behaviours:
- * 
+ *
  *    'image' => array(
  *               'class' => 'ext.AttachmentBehavior.AttachmentBehavior',
  *               'attribute' => 'filename',
@@ -32,41 +32,46 @@
  *               ),
  *               'styles' => array(
  *                   'thumb' => '!100x60',
- *               )           
+ *               )
  *           ),
  *
  * @property string $path
  * @private string $filename
- * @private integer $filesize 
+ * @private integer $filesize
  * @private string $parsedPath
  * */
-class AttachmentBehavior extends CActiveRecordBehavior {    
-    
+class AttachmentBehavior extends CActiveRecordBehavior {
+
     /**
      * @property string folder to save the attachment
-     */ 
+     */
     public $folder = 'uploads';
-    
+
     /**
      * @property string path to save the attachment
-     */ 
+     */
     public $path = ':folder/';
 
     /**
      * @property string filename to save the attachment
      */
     public $newfilename = ':id.:ext';
-    
+
+    /**
+     * @property string filename template
+     */
+    public $filenameTemplate = ':id.:ext';
+
     /**
     * @property name of attribute which holds the attachment
-    */  
+    */
     public $attribute = 'filename';
-    
+
     /**
     * @property array of processors
     */
     public $processors = array();
-    
+
     /**
      * @property array of styles needs to create
      * example:
@@ -76,21 +81,21 @@ class AttachmentBehavior extends CActiveRecordBehavior {
      * )
      */
     public $styles = array();
-    
+
     /**
      * @property string $fallback_image placeholder image src.
      */
     public $fallback_image;
-    
+
     private $file_extension, $filename;
-    
+
     /**
      * getter method for the attachment.
      * if you call it like a property ($model->Attachment) it will return the base size.
      * if you have the styles specified you can get them like this:
      * $model->getAttachment('small')
      * @param string $style style to return
-     */ 
+     */
     public function getAttachment($style = '')
     {
         if($style == ''){
@@ -102,24 +107,32 @@ class AttachmentBehavior extends CActiveRecordBehavior {
                 return '';
         }else{
             if(isset($this->styles[$style])){
-                $im = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->getFullPath($this->Owner->{$this->attribute}));
-                if(file_exists($im))
+                $im = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->getFullPath($this->Owner->{$this->attribute}, false));
+                $realPathFile = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->getFullPath($this->Owner->{$this->attribute}));
+                if(file_exists($realPathFile))
                     return  $im;
                 elseif(isset($this->fallback_image))
-                    return $this->fallback_image;                
+                    return $this->fallback_image;
             }
         }
-        
+
     }
-    
+
     /**
      * check if we have an attachment
      */
     public function hasAttachment()
     {
-        return file_exists($this->getFullPath($this->Owner->{$this->attribute}));
+        if(
+            is_file($this->getFullPath($this->Owner->{$this->attribute})) &&
+            file_exists($this->getFullPath($this->Owner->{$this->attribute}))
+        ) {
+            return true;
+        } else {
+            return false;
+        }
     }
-    
+
     /**
      * return an array of all attachments available to instance
      */
@@ -139,8 +152,8 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         return $array;
     }
 
-     
-    
+
+
     /**
      * deletes the attachment
      */
@@ -150,20 +163,20 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         preg_match('/\.(.*)$/',$this->getFullPath($this->Owner->{$this->attribute}),$matches);
         $this->file_extension = end($matches);
         if(!empty($this->styles)){
-            $this->path = str_replace('.:ext','-:custom.:ext',$this->path);    
+            $this->filenameTemplate = str_replace('.:ext','-:custom.:ext',$this->filenameTemplate);
             foreach($this->styles as $style => $size){
                 $path = $this->getParsedPath($style);
                 if(file_exists($path))unlink($path);
             }
         }
     }
-    
+
     public function afterDelete($event)
     {
         $this->deleteAttachment();
     }
-    
-    
+
+
     public function afterSave($event)
     {
         $file = AttachmentUploadedFile::getInstance($this->Owner,$this->attribute);
@@ -171,15 +184,16 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         if(!is_null($file)){
             if(!$this->Owner->isNewRecord){
                 //delete previous attachment
-                if(file_exists($this->getFullPath($this->Owner->{$this->attribute}))) {
+                if(!empty($this->Owner->{$this->attribute}) && file_exists($this->getFullPath($this->Owner->{$this->attribute}))) {
                     unlink($this->getFullPath($this->Owner->{$this->attribute}));
                 }
             }else{
                 $this->Owner->isNewRecord = false;
             }
             preg_match('/\.(.*)$/',$file->name,$matches);
-            $this->file_extension = end($matches);
+            $this->file_extension = strtolower(end($matches));
             $this->filename = $file->name;
+            $this->filenameTemplate = $this->newfilename;
             $this->newfilename = $this->getParsedPath($this->newfilename);
 
             $path = $this->getFullPath($this->newfilename);
@@ -193,7 +207,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
             $file_type = filetype($path);
             $this->Owner->saveAttributes(array($this->attribute => $this->newfilename));
             $attributes = $this->Owner->attributes;
-            
+
             if(array_key_exists('file_size', $attributes)){
                 $this->Owner->saveAttributes(array('file_size' => filesize($path)));
             }
@@ -202,8 +216,8 @@ class AttachmentBehavior extends CActiveRecordBehavior {
             }
             if(array_key_exists('extension', $attributes)){
                 $this->Owner->saveAttributes(array('extension' => $this->file_extension));
-            }        
-        
+            }
+
             #processors
             if(!empty($this->processors)){
                 foreach($this->processors as $processor){
@@ -211,22 +225,23 @@ class AttachmentBehavior extends CActiveRecordBehavior {
                     $p->output_path = $path;
                     $p->{$processor['method']}($processor['params']);
                 }
-            }        
+            }
             /**
              * process resize if we have multiple sizes
              */
             if(!empty($this->styles)){
-                $this->path = str_replace('.:ext','-:custom.:ext',$this->path);                
+                $styleFilenameTemplate = str_replace('.:ext','-:custom.:ext',$this->filenameTemplate);
                 if(class_exists('Imagick',false)){
                     $processor = new ImagickProcessor($path);
                 }else{
                     if(!function_exists("gd_info"))
                         throw new CException ('GD or Imagick extension needs to image resize.');
-                    $processor = new GDProcessor($path);                    
+                    $processor = new GDProcessor($path);
                 }
                 // if the dimensions start with an ! the keepratio will be false
                 foreach($this->styles as $style => $size){
-                    $processor->output_path = $this->getParsedPath($path);
+                    $processor->output_path
+                        = $this->getFullPath($this->getParsedPath($styleFilenameTemplate, $style));
                     $s = explode('x',$size);
                     if($s[0][0] == '!'){
                         $s[0] = ltrim($s[0], '!');
@@ -241,10 +256,10 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         return true;
     }
 
-    public function getParsedPath($path)
+    public function getParsedPath($path, $custom = '')
     {
-        $needle = array(':folder', ':model', ':id', ':ext', ':filename');
-        $replacement = array($this->folder, get_class($this->Owner), $this->Owner->primaryKey,$this->file_extension, $this->filename);
+        $needle = array(':folder', ':model', ':id', ':ext', ':filename', ':custom');
+        $replacement = array($this->folder, get_class($this->Owner), $this->Owner->primaryKey,$this->file_extension, $this->filename, $custom);
         if(preg_match_all('/:\\{([^\\}]+)\\}/', $path, $matches, PREG_SET_ORDER)) {
             foreach($matches as $match) {
                 $valuePath = explode('.', $match[1]);
@@ -263,7 +278,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
 
     public function UnsafeAttribute($name, $value)
     {
-        var_dump(true);exit;
+        //var_dump(true);exit;
         if($name != $this->attribute)
             parent::onUnsafeAttribute($name, $value);
     }
@@ -292,33 +307,33 @@ class AttachmentUploadedFile
         if(!file_exists($c->file_name))return null;
         return $c;
     }
-    
+
     public function saveAs($file){
         if($this->_error==UPLOAD_ERR_OK){
             if(is_uploaded_file($this->file_name)){
                 return move_uploaded_file($this->file_name, $file);
             }else{
-                return rename($this->file_name, $file);    
-            }            
+                return rename($this->file_name, $file);
+            }
         }else return false;
     }
 }
 
 /**
  * GD Imageprocessor
- */ 
+ */
 class GDProcessor
 {
-    
+
     public $image,$file_extension,$output_path;
-    
+
     public function __construct($image)
     {
         $this->image = $image;
         preg_match('/\.(.*)$/',$this->image,$matches);
-        $this->file_extension = end($matches);    
+        $this->file_extension = end($matches);
     }
-    
+
     public function resize($params)
     {
         switch(strtolower($this->file_extension)){
@@ -341,12 +356,12 @@ class GDProcessor
             default;
                 throw new CException ("'{$this->file_extension}' is not supported.");
             break;
-        }   
-     
+        }
+
         $old_width = imagesx($original);
         $old_height = imagesy($original);
-        
-        $area = $params['width'] * $params['height']; 
+
+        $area = $params['width'] * $params['height'];
         $old_area = $old_width * $old_height;
         $ratio = sqrt($area / $old_area);
         $side_ratio = $old_width / $old_height;
@@ -362,9 +377,9 @@ class GDProcessor
             //landscape
             $new_height = $old_height;
             $new_width = $old_width;
-        }        
+        }
         $new = imagecreatetruecolor($new_width,$new_height);
-        imagecopyresampled($new,$original,0,0,0,0,$new_width,$new_height,$old_width,$old_height);        
+        imagecopyresampled($new,$original,0,0,0,0,$new_width,$new_height,$old_width,$old_height);
         $output_function($new,$this->output_path);
         imagedestroy($new);
         imagedestroy($original);
@@ -373,29 +388,29 @@ class GDProcessor
 class ImagickProcessor
 {
     public $image,$file_extension,$output_path;
-    
+
     public function __construct($image)
     {
         $this->image = $image;
         preg_match('/\.(.*)$/',$this->image,$matches);
         $this->file_extension = end($matches);
     }
-    
+
     /**
      * @param array $params array('width' => integer, 'height' => integer, 'keepratio' => bool)
-     */ 
+     */
     public function resize($params = array())
     {
         $im = new Imagick($this->image);
         $im->thumbnailImage($params['width'], $params['height'], $params['keepratio']);
         $im->writeImage($this->output_path);
     }
-    
+
     public function setImageColorSpace($color_space = Imagick::COLORSPACE_GRAY)
     {
         $im = new Imagick($this->image);
         $im->setImageColorSpace($color_space);
         $im->writeImage($this->output_path);
-    
+
     }
 }
