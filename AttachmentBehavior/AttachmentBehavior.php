@@ -163,9 +163,9 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         preg_match('/\.(.*)$/',$this->getFullPath($this->Owner->{$this->attribute}),$matches);
         $this->file_extension = end($matches);
         if(!empty($this->styles)){
-            $this->filenameTemplate = str_replace('.:ext','-:custom.:ext',$this->filenameTemplate);
+            $oldFilenameTemplate = str_replace('.'.$this->file_extension,'-:custom.'.$this->file_extension,$this->Owner->{$this->attribute});
             foreach($this->styles as $style => $size){
-                $path = $this->getParsedPath($style);
+                $path = $this->getFullPath($this->getParsedPath($oldFilenameTemplate, $style));
                 if(file_exists($path))unlink($path);
             }
         }
@@ -184,8 +184,8 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         if(!is_null($file)){
             if(!$this->Owner->isNewRecord){
                 //delete previous attachment
-                if(!empty($this->Owner->{$this->attribute}) && file_exists($this->getFullPath($this->Owner->{$this->attribute}))) {
-                    unlink($this->getFullPath($this->Owner->{$this->attribute}));
+                if(!empty($this->Owner->{$this->attribute})) {
+                    $this->deleteAttachment();
                 }
             }else{
                 $this->Owner->isNewRecord = false;
@@ -197,8 +197,6 @@ class AttachmentBehavior extends CActiveRecordBehavior {
             $this->newfilename = $this->getParsedPath($this->newfilename);
 
             $path = $this->getFullPath($this->newfilename);
-
-
 
             preg_match('|^(.*[\\\/])|', $path, $match);
             $folder = end($match);
@@ -255,6 +253,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
         }
         return true;
     }
+
 
     public function getParsedPath($path, $custom = '')
     {
