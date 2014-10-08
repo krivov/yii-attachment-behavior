@@ -109,7 +109,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
             if(isset($this->styles[$style])){
                 $im = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->getFullPath($this->Owner->{$this->attribute}, false));
                 $realPathFile = preg_replace('/\.(.*)$/','-'.$style.'\\0',$this->getFullPath($this->Owner->{$this->attribute}));
-                if(file_exists($realPathFile))
+                if(is_file($realPathFile) && file_exists($realPathFile))
                     return  $im;
                 elseif(isset($this->fallback_image))
                     return $this->fallback_image;
