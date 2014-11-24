@@ -329,8 +329,10 @@ class GDProcessor
     public function __construct($image)
     {
         $this->image = $image;
-        preg_match('/\.(.*)$/',$this->image,$matches);
-        $this->file_extension = end($matches);
+        //preg_match('/\.(.*)$/',$this->image,$matches);
+        //$this->file_extension = end($matches);
+        $pathInfo = pathinfo($this->image);
+        $this->file_extension = $pathInfo ['extension'];
     }
 
     public function resize($params)
