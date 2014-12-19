@@ -350,6 +350,7 @@ class GDProcessor
             break;
             case "png";
                 $original = imagecreatefrompng($this->image);
+                imagesavealpha($original, true);
                 $output_function = 'imagepng';
             break;
             default;
@@ -378,6 +379,10 @@ class GDProcessor
             $new_width = $old_width;
         }
         $new = imagecreatetruecolor($new_width,$new_height);
+
+        imageAlphaBlending($new, false);
+        imageSaveAlpha($new, true);
+
         imagecopyresampled($new,$original,0,0,0,0,$new_width,$new_height,$old_width,$old_height);
         $output_function($new,$this->output_path);
         imagedestroy($new);
