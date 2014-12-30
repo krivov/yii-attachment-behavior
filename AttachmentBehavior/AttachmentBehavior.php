@@ -159,14 +159,22 @@ class AttachmentBehavior extends CActiveRecordBehavior {
      */
     public function deleteAttachment()
     {
-        if(file_exists($this->getFullPath($this->Owner->{$this->attribute})))unlink($this->getFullPath($this->Owner->{$this->attribute}));
+        if(
+            file_exists($this->getFullPath($this->Owner->{$this->attribute}))
+            && is_file($this->getFullPath($this->Owner->{$this->attribute}))
+        ) {
+            unlink($this->getFullPath($this->Owner->{$this->attribute}));
+        }
+
         preg_match('/\.(.*)$/',$this->getFullPath($this->Owner->{$this->attribute}),$matches);
         $this->file_extension = end($matches);
         if(!empty($this->styles)){
             $oldFilenameTemplate = str_replace('.'.$this->file_extension,'-:custom.'.$this->file_extension,$this->Owner->{$this->attribute});
             foreach($this->styles as $style => $size){
                 $path = $this->getFullPath($this->getParsedPath($oldFilenameTemplate, $style));
-                if(file_exists($path))unlink($path);
+                if(file_exists($path) && is_file($path)) {
+                    unlink($path);
+                }
             }
         }
     }
@@ -203,7 +211,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
             if(!is_dir($folder))mkdir($folder, 0777, true);
             $file->saveAs($path,false);
             $file_type = filetype($path);
-            $this->Owner->saveAttributes(array($this->attribute => $this->newfilename));
+            $r=$this->Owner->saveAttributes(array($this->attribute => $this->newfilename));
             $attributes = $this->Owner->attributes;
 
             if(array_key_exists('file_size', $attributes)){
@@ -251,6 +259,7 @@ class AttachmentBehavior extends CActiveRecordBehavior {
                 }
             }
         }
+        parent::afterSave($event);
         return true;
     }
 
